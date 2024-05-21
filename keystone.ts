@@ -22,6 +22,7 @@ export default withAuth(
       //   for more information on what database might be appropriate for you
       //   see https://keystonejs.com/docs/guides/choosing-a-database#title
       provider: "mysql",
+      // url: "mysql://sql12707021:4l2fRUxcpk@sql12.freemysqlhosting.net:3306/sql12707021",
       url: "mysql://root@localhost:3306/keystone",
       onConnect: async (context) => {
         if (process.argv.includes("--seed-database")) {

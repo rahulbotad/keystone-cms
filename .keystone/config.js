@@ -453,7 +453,7 @@ var lists = {
   User: (0, import_core7.list)({
     access: {
       operation: {
-        create: import_access.allowAll,
+        create: isAdmin,
         query: import_access.allowAll,
         // only allow users to update _anything_, but what they can update is limited by
         //   the access.filter.* and access.item.* access controls
@@ -471,6 +471,7 @@ var lists = {
       }
     },
     ui: {
+      isHidden: (args) => !isAdmin(args),
       // only show deletion options for admins
       hideDelete: (args) => !isAdmin(args),
       listView: {
@@ -532,6 +533,7 @@ var lists = {
           }
         }
       }),
+      projects: (0, import_fields.relationship)({ ref: "Project.users", many: true }),
       // we can use this field to see what Posts this User has authored
       //   more on that in the Post list below
       posts: (0, import_fields.relationship)({ ref: "Post.author", many: true }),
@@ -558,12 +560,60 @@ var lists = {
       })
     }
   }),
+  Project: (0, import_core7.list)({
+    access: isAdmin,
+    ui: {
+      isHidden: (args) => !isAdmin(args),
+      listView: {
+        // the default columns that will be displayed in the list view
+        initialColumns: ["name", "isActive"]
+      }
+    },
+    fields: {
+      name: (0, import_fields.text)(),
+      users: (0, import_fields.relationship)({
+        ref: "User.projects",
+        // this is some customisations for changing how this will look in the AdminUI
+        ui: {
+          displayMode: "cards",
+          cardFields: ["name", "email"],
+          inlineEdit: { fields: ["name", "email"] },
+          linkToItem: true,
+          inlineConnect: true
+        },
+        // a Post can only have one author
+        //   this is the default, but we show it here for verbosity
+        many: true
+      }),
+      isActive: (0, import_fields.checkbox)()
+    }
+  }),
   Post: (0, import_core7.list)({
     // WARNING
     //   for this starter project, anyone can create, query, update and delete anything
     //   if you want to prevent random people on the internet from accessing your data,
     //   you can find out more at https://keystonejs.com/docs/guides/auth-and-access-control
-    access: import_access.allowAll,
+    access: {
+      operation: {
+        create: import_access.allowAll,
+        query: import_access.allowAll,
+        // only allow users to update _anything_, but what they can update is limited by
+        //   the access.filter.* and access.item.* access controls
+        update: hasSession,
+        // only allow admins to delete users
+        delete: isAdmin
+      },
+      filter: {
+        // query: filterPosts,
+        update: isAdminOrSameUserFilter
+      }
+    },
+    ui: {
+      listView: {
+        // the default columns that will be displayed in the list view
+        initialColumns: ["title", "slug", "author"]
+      }
+    },
     // this is the fields for our Post list
     fields: {
       title: (0, import_fields.text)({ validation: { isRequired: true } }),
@@ -718,10 +768,30 @@ var seedPosts = async (context) => {
     data: postsToCreate.map((p) => ({ ...p, content: p?.content?.document }))
   });
 };
+var seedProjects = async (context) => {
+  const { db } = context.sudo();
+  const rawJSONData = import_fs.default.readFileSync(
+    import_path.default.join(process.cwd(), "./src/seed/projects.json"),
+    "utf-8"
+  );
+  const seedProjects2 = JSON.parse(rawJSONData);
+  const projectsAlreadyInDatabase = await db.Project.findMany({
+    where: {
+      name: { in: seedProjects2.map((project) => project.name) }
+    }
+  });
+  const projectsToCreate = seedProjects2.filter(
+    (seedProject) => !projectsAlreadyInDatabase.some((p) => p.name === seedProject.name)
+  );
+  await db.Project.createMany({
+    data: projectsToCreate.map((p) => ({ ...p, isActive: p?.isActive }))
+  });
+};
 var seedDatabase = async (context) => {
   console.log(`\u{1F331} Seeding database...`);
   await seedUsers(context);
   await seedPosts(context);
+  await seedProjects(context);
   console.log(`\u{1F331} Seeding database completed.`);
 };
 
@@ -733,6 +803,7 @@ var keystone_default = withAuth(
       //   for more information on what database might be appropriate for you
       //   see https://keystonejs.com/docs/guides/choosing-a-database#title
       provider: "mysql",
+      // url: "mysql://sql12707021:4l2fRUxcpk@sql12.freemysqlhosting.net:3306/sql12707021",
       url: "mysql://root@localhost:3306/keystone",
       onConnect: async (context) => {
         if (process.argv.includes("--seed-database")) {

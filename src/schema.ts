@@ -30,6 +30,7 @@ import type { Lists } from ".keystone/types";
 export type Session = {
   itemId: string;
   data: {
+    id: string;
     isAdmin: boolean;
   };
 };
@@ -81,11 +82,25 @@ function isAdmin({ session }: { session?: Session }) {
   return false;
 }
 
+const filterPosts = ({ session }: { session?: Session }) => {
+  if (!session) return false;
+  // if the user is an Admin, they can access all the records
+  if (session.data?.isAdmin) return {};
+  // otherwise, filter for published posts
+  return {
+    author: {
+      id: {
+        equals: session.itemId,
+      },
+    },
+  };
+};
+
 export const lists: Lists = {
   User: list({
     access: {
       operation: {
-        create: allowAll,
+        create: isAdmin,
         query: allowAll,
 
         // only allow users to update _anything_, but what they can update is limited by
@@ -105,6 +120,7 @@ export const lists: Lists = {
       },
     },
     ui: {
+      isHidden: (args) => !isAdmin(args),
       // only show deletion options for admins
       hideDelete: (args) => !isAdmin(args),
       listView: {
@@ -169,6 +185,7 @@ export const lists: Lists = {
         },
       }),
 
+      projects: relationship({ ref: "Project.users", many: true }),
       // we can use this field to see what Posts this User has authored
       //   more on that in the Post list below
       posts: relationship({ ref: "Post.author", many: true }),
@@ -197,13 +214,64 @@ export const lists: Lists = {
       }),
     },
   }),
+  Project: list({
+    access: isAdmin,
+    ui: {
+      isHidden: (args) => !isAdmin(args),
+      listView: {
+        // the default columns that will be displayed in the list view
+        initialColumns: ["name", "isActive"],
+      },
+    },
+    fields: {
+      name: text(),
+      users: relationship({
+        ref: "User.projects",
+        // this is some customisations for changing how this will look in the AdminUI
+        ui: {
+          displayMode: "cards",
+          cardFields: ["name", "email"],
+          inlineEdit: { fields: ["name", "email"] },
+          linkToItem: true,
+          inlineConnect: true,
+        },
+
+        // a Post can only have one author
+        //   this is the default, but we show it here for verbosity
+        many: true,
+      }),
+      isActive: checkbox(),
+    },
+  }),
 
   Post: list({
     // WARNING
     //   for this starter project, anyone can create, query, update and delete anything
     //   if you want to prevent random people on the internet from accessing your data,
     //   you can find out more at https://keystonejs.com/docs/guides/auth-and-access-control
-    access: allowAll,
+    access: {
+      operation: {
+        create: allowAll,
+        query: allowAll,
+
+        // only allow users to update _anything_, but what they can update is limited by
+        //   the access.filter.* and access.item.* access controls
+        update: hasSession,
+
+        // only allow admins to delete users
+        delete: isAdmin,
+      },
+      filter: {
+        // query: filterPosts,
+        update: isAdminOrSameUserFilter,
+      },
+    },
+    ui: {
+      listView: {
+        // the default columns that will be displayed in the list view
+        initialColumns: ["title", "slug", "author"],
+      },
+    },
 
     // this is the fields for our Post list
     fields: {

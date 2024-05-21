@@ -12,12 +12,20 @@ generator client {
 }
 
 model User {
-  id       String  @id @default(uuid())
-  name     String  @unique @default("")
-  email    String  @unique @default("")
+  id       String    @id @default(uuid())
+  name     String    @unique @default("")
+  email    String    @unique @default("")
   password String
-  posts    Post[]  @relation("Post_author")
-  isAdmin  Boolean @default(false)
+  projects Project[] @relation("Project_users")
+  posts    Post[]    @relation("Post_author")
+  isAdmin  Boolean   @default(false)
+}
+
+model Project {
+  id       String  @id @default(uuid())
+  name     String  @default("")
+  users    User[]  @relation("Project_users")
+  isActive Boolean @default(false)
 }
 
 model Post {
